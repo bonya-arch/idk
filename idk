@@ -32,7 +32,7 @@ local Config = {
     Outline = false, -- off by default so bloom isn't boxed in by a hard black border
 
     -- Watermark text under crosshair
-    TagText = "bonya.win",
+    TagText = "yokai.win",
     TagOffsetY = 36,
     TagTextSize = 16
 }
