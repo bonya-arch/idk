@@ -1,0 +1,223 @@
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local parent = (gethui and gethui()) or CoreGui or LocalPlayer:WaitForChild("PlayerGui")
+
+if parent:FindFirstChild("BonyaWinCrosshairWhiteGlow") then
+    parent.BonyaWinCrosshairWhiteGlow:Destroy()
+end
+
+local Config = {
+    -- Dimensions (bigger + thicker, no dot)
+    BaseGap = 9,
+    BaseLength = 14,
+    Thickness = 2,
+
+    -- Animations
+    SpinSpeed = 140,
+    PulseSpeed = 3.5,
+    PulseAmount = 5,
+
+    -- True Glow (multi-stage falloff)
+    Color = Color3.fromRGB(255, 255, 255),
+    Glow = true,
+    GlowSteps = {
+        -- { extraWidthOrHeight, transparency }
+        { spread = 4,  transparency = 0.45 }, -- tight hot inner bloom
+        { spread = 10, transparency = 0.72 }, -- mid-range soft halo
+        { spread = 18, transparency = 0.88 }  -- wide faint outer haze
+    },
+    Outline = false, -- off by default so bloom isn't boxed in by a hard black border
+
+    -- Watermark text under crosshair
+    TagText = "bonya.win",
+    TagOffsetY = 36,
+    TagTextSize = 16
+}
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BonyaWinCrosshairWhiteGlow"
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = parent
+
+local Center = Instance.new("Frame")
+Center.Name = "Center"
+Center.Size = UDim2.fromOffset(0, 0)
+Center.Position = UDim2.fromScale(0.5, 0.5)
+Center.BackgroundTransparency = 1
+Center.Parent = ScreenGui
+
+-- Helper to attach multi-stage bloom layers to any UI element
+local function addBloomLayers(targetFrame, baseZIndex)
+    local layers = {}
+    if not Config.Glow then
+        return layers
+    end
+
+    for idx, step in ipairs(Config.GlowSteps) do
+        local halo = Instance.new("Frame")
+        halo.Name = targetFrame.Name .. "_Bloom" .. idx
+        halo.AnchorPoint = Vector2.new(0.5, 0.5)
+        halo.BorderSizePixel = 0
+        halo.BackgroundColor3 = Config.Color
+        halo.BackgroundTransparency = step.transparency
+        halo.ZIndex = baseZIndex - idx
+        halo.Parent = targetFrame.Parent
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0.5, 0)
+        corner.Parent = halo
+
+        -- Soft radial-style fade toward the edges of the halo
+        local grad = Instance.new("UIGradient")
+        grad.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.25),
+            NumberSequenceKeypoint.new(0.5, 0),
+            NumberSequenceKeypoint.new(1, 0.25)
+        })
+        grad.Rotation = 90
+        grad.Parent = halo
+
+        table.insert(layers, {
+            frame = halo,
+            spread = step.spread
+        })
+    end
+
+    return layers
+end
+
+local arms = {}
+
+local function createArm(name)
+    local core = Instance.new("Frame")
+    core.Name = name
+    core.AnchorPoint = Vector2.new(0.5, 0.5)
+    core.BorderSizePixel = 0
+    core.BackgroundColor3 = Config.Color
+    core.ZIndex = 10
+    core.Parent = Center
+
+    local armCorner = Instance.new("UICorner")
+    armCorner.CornerRadius = UDim.new(1, 0)
+    armCorner.Parent = core
+
+    if Config.Outline then
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = Color3.fromRGB(0, 0, 0)
+        stroke.Thickness = 1
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Parent = core
+    end
+
+    local blooms = addBloomLayers(core, 10)
+    local entry = { core = core, blooms = blooms }
+    table.insert(arms, entry)
+    return entry
+end
+
+local topArm = createArm("Top")
+local botArm = createArm("Bottom")
+local leftArm = createArm("Left")
+local rightArm = createArm("Right")
+
+-- Watermark label + layered glow behind it
+local TagContainer = Instance.new("Frame")
+TagContainer.Name = "BonyaTagContainer"
+TagContainer.AnchorPoint = Vector2.new(0.5, 0)
+TagContainer.Position = UDim2.new(0.5, 0, 0.5, Config.TagOffsetY)
+TagContainer.Size = UDim2.fromOffset(180, 24)
+TagContainer.BackgroundTransparency = 1
+TagContainer.Parent = ScreenGui
+
+local TagLabel = Instance.new("TextLabel")
+TagLabel.Name = "BonyaTag"
+TagLabel.Size = UDim2.fromScale(1, 1)
+TagLabel.BackgroundTransparency = 1
+TagLabel.Text = Config.TagText
+TagLabel.TextColor3 = Config.Color
+TagLabel.Font = Enum.Font.Code
+TagLabel.TextSize = Config.TagTextSize
+TagLabel.TextWrapped = false
+TagLabel.ZIndex = 12
+TagLabel.Parent = TagContainer
+
+if Config.Outline then
+    local tagStroke = Instance.new("UIStroke")
+    tagStroke.Color = Color3.fromRGB(0, 0, 0)
+    tagStroke.Thickness = 1
+    tagStroke.Parent = TagLabel
+end
+
+-- Soft text glow using offset ghost labels
+if Config.Glow then
+    local ghostOffsets = {
+        { x = 0, y = 0, t = 0.55, z = 11 },
+        { x = -1, y = 0, t = 0.75, z = 10 },
+        { x = 1, y = 0, t = 0.75, z = 10 },
+        { x = 0, y = -1, t = 0.75, z = 10 },
+        { x = 0, y = 1, t = 0.75, z = 10 }
+    }
+    for i, g in ipairs(ghostOffsets) do
+        local ghost = Instance.new("TextLabel")
+        ghost.Name = "TagGlow_" .. i
+        ghost.Size = UDim2.fromScale(1, 1)
+        ghost.Position = UDim2.fromOffset(g.x, g.y)
+        ghost.BackgroundTransparency = 1
+        ghost.Text = Config.TagText
+        ghost.TextColor3 = Config.Color
+        ghost.TextTransparency = g.t
+        ghost.Font = Enum.Font.Code
+        ghost.TextSize = Config.TagTextSize
+        ghost.TextWrapped = false
+        ghost.ZIndex = g.z
+        ghost.Parent = TagContainer
+    end
+end
+
+local elapsed = 0
+
+RunService.RenderStepped:Connect(function(dt)
+    elapsed += dt
+
+    -- 1. Spin arms
+    Center.Rotation = (Center.Rotation + Config.SpinSpeed * dt) % 360
+
+    -- 2. Grow & shrink
+    local wave = (math.sin(elapsed * Config.PulseSpeed) + 1) / 2
+    local currentGap = Config.BaseGap + (wave * Config.PulseAmount)
+    local currentLen = Config.BaseLength + (wave * (Config.PulseAmount * 0.7))
+    local offset = currentGap + (currentLen / 2)
+
+    local vertLayout = {
+        { topArm, -offset },
+        { botArm, offset }
+    }
+    for _, item in ipairs(vertLayout) do
+        local arm, y = item[1], item[2]
+        arm.core.Size = UDim2.fromOffset(Config.Thickness, currentLen)
+        arm.core.Position = UDim2.fromOffset(0, y)
+        for _, b in ipairs(arm.blooms) do
+            b.frame.Size = UDim2.fromOffset(Config.Thickness + b.spread, currentLen + b.spread)
+            b.frame.Position = UDim2.fromOffset(0, y)
+        end
+    end
+
+    local horizLayout = {
+        { leftArm, -offset },
+        { rightArm, offset }
+    }
+    for _, item in ipairs(horizLayout) do
+        local arm, x = item[1], item[2]
+        arm.core.Size = UDim2.fromOffset(currentLen, Config.Thickness)
+        arm.core.Position = UDim2.fromOffset(x, 0)
+        for _, b in ipairs(arm.blooms) do
+            b.frame.Size = UDim2.fromOffset(currentLen + b.spread, Config.Thickness + b.spread)
+            b.frame.Position = UDim2.fromOffset(x, 0)
+        end
+    end
+end)
